@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Админ-панель салона</title>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/base.css">
+</head>
+<body>
+<main>
+  <div class="top">
+    <h1>👑 Админ-панель</h1>
+    <div class="nav hidden" id="nav"><a class="btn ghost" href="/support">💬 Вопросы клиентов</a><button class="ghost" id="out">Выйти</button></div>
+  </div>
+
+  <section id="login">
+    <h2>Вход</h2>
+    <form id="lf" class="add" style="grid-template-columns:1fr auto">
+      <input type="password" id="pw" placeholder="Пароль владельца" autocomplete="current-password" aria-label="Пароль">
+      <button type="submit">Войти</button>
+    </form>
+    <p class="err" id="lerr"></p>
+  </section>
+
+  <div id="app" style="display:none;gap:20px">
+    <section>
+      <h2>👩‍🎨 Мастера</h2>
+      <div id="masters"></div>
+      <form id="mf" class="add">
+        <input id="mname" placeholder="Имя мастера" aria-label="Имя мастера">
+        <input id="mtg" placeholder="Telegram ID (необязательно)" inputmode="numeric" aria-label="Telegram ID мастера">
+        <button type="submit">Добавить</button>
+      </form>
+      <p class="hint">Telegram ID мастер узнаёт у бота командой /id. Он нужен для заявок в Telegram и проверки при входе в общий чат. Пароль для кабинета мастера (/master) показывается один раз при добавлении.</p>
+      <p class="err" id="merr"></p>
+      <p class="cred hidden" id="mcred"></p>
+    </section>
+
+    <section>
+      <h2>🛟 Служба поддержки</h2>
+      <div id="staff"></div>
+      <form id="sf" class="add">
+        <input id="sname" placeholder="Имя сотрудника" aria-label="Имя сотрудника">
+        <input id="stg" placeholder="Telegram ID (необязательно)" inputmode="numeric" aria-label="Telegram ID сотрудника">
+        <button type="submit">Добавить</button>
+      </form>
+      <p class="hint">Сотрудник отвечает на вопросы клиентов в боте или на странице /support.</p>
+      <p class="err" id="serr"></p>
+      <p class="cred hidden" id="scred"></p>
+    </section>
+
+    <section>
+      <h2>🔗 Общий чат салона</h2>
+      <form id="cf" class="add" style="grid-template-columns:1fr auto auto">
+        <input id="clink" placeholder="https://t.me/+..." aria-label="Ссылка на общий чат">
+        <button type="submit">Сохранить</button>
+        <button type="button" class="ghost danger" id="cclear">Убрать</button>
+      </form>
+      <p class="hint" id="chint"></p>
+      <p class="err" id="cerr"></p>
+    </section>
+
+    <section>
+      <h2>📊 Часы работы</h2>
+      <div class="tabs" id="ptabs">
+        <button class="ghost on" data-p="week">Эта неделя</button>
+        <button class="ghost" data-p="prev">Прошлая</button>
+        <button class="ghost" data-p="month">Этот месяц</button>
+      </div>
+      <div id="stats"></div>
+    </section>
+
+    <section>
+      <h2>🏖 Выходные мастеров</h2>
+      <div id="daysoff"></div>
+      <form id="df" class="add">
+        <select id="dmaster" aria-label="Мастер"></select>
+        <input type="date" id="ddate" aria-label="Дата выходного">
+        <button type="submit">Добавить</button>
+      </form>
+      <p class="err" id="derr"></p>
+    </section>
+
+    <section>
+      <h2>📅 Ближайшие записи</h2>
+      <div id="bookings"></div>
+    </section>
+  </div>
+</main>
+
+<dialog id="ed">
+  <form id="ef" method="dialog">
+    <h2 style="margin:0">Изменить запись</h2>
+    <p class="hint" id="einfo" style="margin:0"></p>
+    <label>Мастер<select id="emaster"></select></label>
+    <label>Дата<input type="date" id="edate"></label>
+    <label>Время<select id="etime"></select></label>
+    <p class="err" id="eerr"></p>
+    <div class="acts"><button type="button" class="ghost" id="ecancel">Закрыть</button><button type="submit">Сохранить</button></div>
+  </form>
+</dialog>
+
+<script src="/static/common.js"></script>
+<script>
+const api = Api(["adm"], () => { $("app").style.display = "none"; $("nav").classList.add("hidden"); $("login").style.display = "block"; });
+const note = (id, text) => { const el = $(id); el.textContent = text; el.classList.toggle("hidden", !text); };
+let MASTERS = [], BOOKINGS = {}, editId = null, period = "week";
+
+async function load() {
+  const [m, s, ch, o, b] = await Promise.all([api("/api/admin/masters"), api("/api/admin/support-staff"), api("/api/admin/chat"), api("/api/admin/days-off"), api("/api/admin/bookings")]);
+  $("login").style.display = "none"; $("app").style.display = "grid"; $("nav").classList.remove("hidden");
+  MASTERS = m.masters;
+
+  $("masters").innerHTML = m.masters.length ? m.masters.map(x => `<div class="item"><div>💅 ${esc(x.name)}<small>${x.telegram_id ? "Telegram ID: " + esc(x.telegram_id) : "Telegram не указан"}</small></div><div class="acts"><button class="ghost" data-mp="${x.id}">🔑 Пароль</button><button class="ghost danger" data-m="${x.id}">Удалить</button></div></div>`).join("")
+    : '<p class="empty">Мастеров пока нет. Добавьте хотя бы одного, иначе запись недоступна.</p>';
+  $("staff").innerHTML = s.staff.length ? s.staff.map(x => `<div class="item"><div>🛟 ${esc(x.name)}<small>${x.telegram_id ? "Telegram ID: " + esc(x.telegram_id) : "Telegram не указан"}</small></div><div class="acts"><button class="ghost" data-sp="${x.id}">🔑 Пароль</button><button class="ghost danger" data-s="${x.id}">Удалить</button></div></div>`).join("")
+    : '<p class="empty">Сотрудников поддержки пока нет.</p>';
+
+  $("clink").value = ch.link || "";
+  $("chint").textContent = (ch.link ? "Мастера видят ссылку в кабинете и в боте." : "Ссылка не задана: мастера видят «временно недоступна».") +
+    (ch.group_connected ? " Группа для проверки участников подключена." : " Группа не подключена: добавьте бота администратором и отправьте в ней /setgroup.");
+
+  $("dmaster").innerHTML = m.masters.map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join("");
+  $("daysoff").innerHTML = o.days_off.length ? o.days_off.map(x => `<div class="item"><div>${esc(x.master)}<small>выходной ${fmtDate(x.date)}</small></div><button class="ghost" data-d="${x.id}">Убрать</button></div>`).join("") : '<p class="empty">Выходных пока нет.</p>';
+
+  BOOKINGS = {}; let html = "", last = "";
+  $("etime").innerHTML = b.slots.map(t => `<option>${t}</option>`).join("");
+  for (const x of b.bookings) {
+    BOOKINGS[x.id] = x;
+    if (x.date !== last) { html += `<div class="day">${fmtDate(x.date)}</div>`; last = x.date; }
+    html += `<div class="item"><div>🕒 ${esc(x.time)} · ${esc(x.name)}, ${esc(x.phone)}${x.tg_username ? ", @" + esc(x.tg_username) : ""}<small>👩‍🎨 ${esc(x.master)} · бот у клиента: ${x.notified ? "подключён" : "нет"}${x.comment ? " · " + esc(x.comment) : ""}</small></div><div class="acts"><button class="ghost" data-e="${x.id}">✏️ Изменить</button><button class="ghost danger" data-b="${x.id}" data-n="${x.notified}">Отменить</button></div></div>`;
+  }
+  $("bookings").innerHTML = html || '<p class="empty">Записей пока нет.</p>';
+  loadStats();
+}
+
+async function loadStats() {
+  const s = await api("/api/admin/stats?period=" + period);
+  const total = s.rows.reduce((a, r) => a + r.hours, 0);
+  $("stats").innerHTML = `<p class="hint">${fmtDate(s.start)} – ${fmtDate(s.end)}. Считаются приёмы по 2 часа, прошедшие и сегодняшние.</p>` +
+    (s.rows.map((r, i) => `<div class="item"><div>${["🥇", "🥈", "🥉"][i] && r.visits ? ["🥇", "🥈", "🥉"][i] : "▫️"} ${esc(r.name)}</div><div><b>${r.hours} ч</b> <small style="display:inline">(${r.visits} ${plural(r.visits, ["приём", "приёма", "приёмов"])})</small></div></div>`).join("") || '<p class="empty">Нет данных.</p>') +
+    `<div class="item"><div><b>Всего</b></div><div><b>${total} ч</b></div></div>`;
+}
+
+const person = (formId, nameId, tgId, errId, credId, path, label) => $(formId).addEventListener("submit", async e => {
+  e.preventDefault(); note(errId, ""); note(credId, "");
+  try {
+    const r = await api(path, "POST", {name: $(nameId).value, telegram_id: $(tgId).value});
+    $(nameId).value = ""; $(tgId).value = ""; await load();
+    note(credId, `Пароль для входа (${label}): ${r.password}. Сохраните его: повторно он не показывается.`);
+  } catch (err) { note(errId, err.message); $(errId).classList.remove("hidden"); }
+});
+person("mf", "mname", "mtg", "merr", "mcred", "/api/admin/masters", "/master");
+person("sf", "sname", "stg", "serr", "scred", "/api/admin/support-staff", "/support");
+
+$("lf").addEventListener("submit", async e => {
+  e.preventDefault(); $("lerr").textContent = "";
+  try { localStorage.setItem("adm", (await api("/api/admin/login", "POST", {password: $("pw").value})).token); $("pw").value = ""; await load(); }
+  catch (err) { $("lerr").textContent = err.message; }
+});
+
+$("cf").addEventListener("submit", async e => { e.preventDefault(); $("cerr").textContent = ""; try { await api("/api/admin/chat", "POST", {link: $("clink").value}); await load(); } catch (err) { $("cerr").textContent = err.message; } });
+$("cclear").addEventListener("click", async () => { if (confirm("Убрать ссылку? Мастера увидят, что она временно недоступна.")) { await api("/api/admin/chat", "POST", {link: ""}); await load(); } });
+
+$("df").addEventListener("submit", async e => {
+  e.preventDefault(); $("derr").textContent = "";
+  try {
+    const d = await api("/api/admin/days-off", "POST", {master_id: $("dmaster").value, date: $("ddate").value});
+    $("ddate").value = ""; await load();
+    if (d.conflicts) alert(`У мастера на эту дату уже записей: ${d.conflicts}. Они остались в списке: перенесите их (✏️ Изменить) или отмените.`);
+  } catch (err) { $("derr").textContent = err.message; }
+});
+
+$("ptabs").addEventListener("click", e => { if (!e.target.dataset.p) return; period = e.target.dataset.p; [...$("ptabs").children].forEach(b => b.classList.toggle("on", b === e.target)); loadStats(); });
+
+function openEdit(id) {
+  const x = BOOKINGS[id]; editId = id;
+  $("einfo").textContent = `${x.name}, ${x.phone}`;
+  $("emaster").innerHTML = MASTERS.map(m => `<option value="${m.id}"${m.id === x.master_id ? " selected" : ""}>${esc(m.name)}</option>`).join("");
+  $("edate").value = x.date; $("etime").value = x.time; $("eerr").textContent = "";
+  $("ed").showModal();
+}
+$("ecancel").addEventListener("click", () => $("ed").close());
+$("ef").addEventListener("submit", async e => {
+  e.preventDefault();
+  try { await api("/api/admin/bookings/" + editId, "PATCH", {master_id: $("emaster").value, date: $("edate").value, time: $("etime").value}); $("ed").close(); await load(); }
+  catch (err) { $("eerr").textContent = err.message; }
+});
+
+document.addEventListener("click", async e => {
+  const t = e.target.dataset;
+  try {
+    if (t.mp && confirm("Выпустить новый пароль для мастера? Старый перестанет работать.")) { const r = await api(`/api/admin/masters/${t.mp}/password`, "POST"); note("mcred", "Новый пароль мастера: " + r.password); }
+    if (t.sp && confirm("Выпустить новый пароль? Старый перестанет работать.")) { const r = await api(`/api/admin/support-staff/${t.sp}/password`, "POST"); note("scred", "Новый пароль сотрудника: " + r.password); }
+    if (t.m && confirm("Удалить мастера? Он будет удалён и из общего чата в Telegram. Будущие записи останутся.")) {
+      const r = await api("/api/admin/masters/" + t.m, "DELETE"); await load();
+      if (r.future_bookings) alert(`У мастера осталось будущих записей: ${r.future_bookings}. Передайте их другому мастеру (✏️ Изменить).`);
+    }
+    if (t.s && confirm("Удалить сотрудника поддержки?")) { await api("/api/admin/support-staff/" + t.s, "DELETE"); await load(); }
+    if (t.d) { await api("/api/admin/days-off/" + t.d, "DELETE"); await load(); }
+    if (t.e) openEdit(t.e);
+    if (t.b && confirm("Отменить запись? " + (t.n === "1" ? "Клиент получит сообщение в Telegram." : "Клиент не подключал Telegram: сообщите ему об отмене по телефону.") + " Мастер тоже получит уведомление.")) { await api("/api/admin/bookings/" + t.b, "DELETE"); await load(); }
+  } catch (err) { alert(err.message); }
+});
+$("out").addEventListener("click", () => { localStorage.removeItem("adm"); location.reload(); });
+
+if (localStorage.getItem("adm")) load().catch(() => {});
+</script>
+</body>
+</html>

@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Маникюр — запись онлайн</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f2edf5;--card:#fff;--ink:#2a1a32;--muted:#6f6277;--accent:#a8235c;--accent-ink:#fff;--line:#ddd2e3;--ok:#1f7a55;--err:#b3261e}
+@media (prefers-color-scheme:dark){:root{--bg:#1c1322;--card:#2a1d33;--ink:#f4ecf7;--muted:#b7a8c0;--accent:#ee6aa3;--accent-ink:#2a1a32;--line:#44344f;--ok:#6fd3a5;--err:#ff8a80}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:Manrope,system-ui,sans-serif;line-height:1.5}
+main{max-width:640px;margin:0 auto;padding:32px 20px 64px}
+.nails{display:flex;gap:10px;margin-bottom:24px}
+.nails i{width:34px;height:52px;border-radius:17px 17px 12px 12px;display:block}
+h1{font-size:clamp(34px,9vw,52px);line-height:1.05;font-weight:800;margin:0 0 12px;letter-spacing:-.02em}
+.lead{color:var(--muted);margin:0 0 32px;max-width:48ch}
+form{background:var(--card);border-radius:24px;padding:24px;display:grid;gap:24px}
+fieldset{border:0;padding:0;margin:0;min-width:0}
+legend,label.t{font-weight:700;margin-bottom:10px;display:block;padding:0}
+.slots{display:flex;flex-wrap:wrap;gap:8px}
+.slot input{position:absolute;opacity:0}
+.slot span{display:block;padding:10px 18px;border:1.5px solid var(--line);border-radius:999px;cursor:pointer;font-weight:500}
+.slot input:checked+span{border-color:var(--accent);background:var(--accent);color:var(--accent-ink)}
+.slot input:focus-visible+span,input:focus-visible,textarea:focus-visible,button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+input[type=text],input[type=tel],input[type=date],textarea{width:100%;font:inherit;color:inherit;background:transparent;border:1.5px solid var(--line);border-radius:14px;padding:13px 14px}
+textarea{resize:vertical;min-height:72px}
+.row{display:grid;gap:16px}
+@media(min-width:520px){.row{grid-template-columns:1fr 1fr}}
+.hint{color:var(--muted);font-size:14px;margin:6px 0 0;font-weight:500}
+.status{margin:0;font-weight:500}
+.status.err{color:var(--err)}
+.status.ok{color:var(--ok)}
+button[type=submit]{font:inherit;font-weight:800;font-size:17px;background:var(--accent);color:var(--accent-ink);border:0;border-radius:16px;padding:16px;cursor:pointer}
+button[disabled]{opacity:.5;cursor:not-allowed}
+.btn{display:inline-block;margin-top:12px;background:var(--accent);color:var(--accent-ink);font-weight:800;text-decoration:none;border-radius:14px;padding:13px 20px}
+.btn[hidden]{display:none}
+.qbtn{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));font:inherit;font-weight:800;background:var(--ink);color:var(--bg);border:0;border-radius:999px;padding:13px 20px;cursor:pointer;box-shadow:0 4px 16px #0004}
+dialog{border:0;border-radius:24px;background:var(--card);color:var(--ink);padding:22px;width:min(94vw,460px);max-height:90vh}
+dialog::backdrop{background:#0007}
+dialog h2{margin:0 0 6px;font-size:22px}
+.opts{display:grid;gap:10px;margin:14px 0}
+.opt{display:block;text-align:center;font:inherit;font-weight:700;text-decoration:none;color:var(--ink);background:transparent;border:1.5px solid var(--line);border-radius:14px;padding:13px;cursor:pointer}
+.opt[hidden]{display:none}
+.qform{display:grid;gap:10px}
+.qmsgs{max-height:42vh;overflow:auto;margin:10px 0}
+.bubble{padding:9px 13px;border-radius:14px;margin:6px 0;max-width:88%;border:1.5px solid var(--line);white-space:pre-wrap;overflow-wrap:anywhere}
+.bubble.staff{background:var(--accent);color:var(--accent-ink);border-color:transparent}
+.bubble.client{margin-left:auto}
+.bubble small{display:block;opacity:.7;font-size:12px}
+.hp{position:absolute;left:-9999px}
+.done{background:var(--card);border-radius:24px;padding:32px 24px;display:none}
+.done h2{margin:0 0 8px;font-size:28px}
+</style>
+</head>
+<body>
+<main>
+  <div class="nails" aria-hidden="true">
+    <i style="background:#a8235c"></i><i style="background:#e9b7cf"></i><i style="background:#2a1a32"></i><i style="background:#d9c7ee"></i><i style="background:#f3d9c4"></i>
+  </div>
+  <h1>Запишитесь на маникюр</h1>
+  <p class="lead">Работаем с 9:00 до 21:00. Один приём занимает около 2 часов. Выберите дату — мы покажем свободное время и подберём мастера.</p>
+
+  <form id="f" novalidate>
+    <div>
+      <label class="t" for="date">Дата</label>
+      <input type="date" id="date" required>
+    </div>
+
+    <fieldset>
+      <legend>Время</legend>
+      <div class="slots" id="slots"><span class="hint">Сначала выберите дату.</span></div>
+    </fieldset>
+
+    <div class="row">
+      <div><label class="t" for="name">Имя</label><input type="text" id="name" autocomplete="name" required></div>
+      <div><label class="t" for="phone">Телефон</label><input type="tel" id="phone" autocomplete="tel" placeholder="+7 900 000-00-00" required></div>
+    </div>
+
+    <div>
+      <label class="t" for="tg">Telegram (необязательно)</label>
+      <input type="text" id="tg" placeholder="@username" autocomplete="off" autocapitalize="off">
+      <p class="hint">Если укажете, мастер сможет написать вам там.</p>
+    </div>
+
+    <div>
+      <label class="t" for="comment">Комментарий (необязательно)</label>
+      <textarea id="comment" placeholder="Например: снятие гель-лака, нюдовый цвет"></textarea>
+    </div>
+
+    <input class="hp" type="text" id="website" tabindex="-1" autocomplete="off" aria-hidden="true">
+
+    <p class="status" id="status" role="status"></p>
+    <button type="submit" id="btn">Записаться</button>
+  </form>
+
+  <section class="done" id="done" aria-live="polite">
+    <h2>Вы записаны</h2>
+    <p id="doneText"></p>
+    <a class="btn" id="tgLink" hidden target="_blank" rel="noopener">Получать уведомления в Telegram</a>
+    <p class="hint" id="tgHint" hidden>Если запись придётся изменить или отменить, мы сообщим вам там.</p>
+  </section>
+</main>
+
+<button class="qbtn" id="qbtn" type="button">❓ Есть вопрос?</button>
+<dialog id="qdlg">
+  <h2>Есть вопрос или ошибка?</h2>
+  <p class="hint" style="margin:0">Выберите, где вам удобнее написать нам.</p>
+  <div id="qpick" class="opts">
+    <button class="opt" type="button" id="qsite">✍️ Написать на сайте</button>
+    <a class="opt" id="qtg" target="_blank" rel="noopener" hidden>✈️ Написать в Telegram</a>
+    <a class="opt" id="qwa" target="_blank" rel="noopener" hidden>🟢 Написать в WhatsApp</a>
+  </div>
+  <form id="qform" class="qform" hidden>
+    <input type="text" id="qname" placeholder="Ваше имя" autocomplete="name" aria-label="Ваше имя">
+    <input type="text" id="qcontact" placeholder="Телефон или Telegram для связи (необязательно)" aria-label="Контакт">
+    <textarea id="qtext" maxlength="1000" placeholder="Опишите вопрос или ошибку" aria-label="Вопрос"></textarea>
+    <p class="status err" id="qerr"></p>
+    <button type="submit">Отправить</button>
+  </form>
+  <div id="qchat" hidden>
+    <div class="qmsgs" id="qmsgs" aria-live="polite"></div>
+    <form id="qreply" class="qform">
+      <textarea id="qrtext" maxlength="1000" placeholder="Ваше сообщение…" aria-label="Сообщение"></textarea>
+      <button type="submit">Отправить</button>
+    </form>
+    <button type="button" class="opt" id="qnew" style="margin-top:10px">Задать новый вопрос</button>
+  </div>
+  <button type="button" class="opt" id="qclose" style="margin-top:10px">Закрыть</button>
+</dialog>
+
+<script>
+const API = ""; // сайт и сервер на одном адресе
+
+const $ = id => document.getElementById(id);
+const pad = n => String(n).padStart(2, "0");
+const iso = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const setStatus = (t, c) => { $("status").textContent = t; $("status").className = "status " + (c || ""); };
+
+const today = new Date(), max = new Date();
+max.setDate(max.getDate() + 60);
+$("date").min = iso(today); $("date").max = iso(max);
+
+function showSlots(free) {
+  if (!free.length) {
+    $("slots").innerHTML = '<span class="hint">На эту дату нет свободных мест. Выберите другой день.</span>';
+    $("btn").disabled = true;
+    return;
+  }
+  $("slots").innerHTML = free.map(t => `<label class="slot"><input type="radio" name="time" value="${t}"><span>${t}</span></label>`).join("");
+  $("btn").disabled = false;
+}
+
+async function loadSlots() {
+  const date = $("date").value;
+  if (!date) return;
+  setStatus("");
+  $("slots").innerHTML = '<span class="hint">Проверяем свободное время…</span>';
+  try {
+    const r = await fetch(`${API}/api/slots?date=${date}`);
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error);
+    showSlots(d.free);
+  } catch (e) {
+    $("slots").innerHTML = '<span class="hint">Не удалось загрузить время. Обновите страницу.</span>';
+  }
+}
+$("date").addEventListener("change", loadSlots);
+
+$("f").addEventListener("submit", async e => {
+  e.preventDefault();
+  if ($("website").value) return;
+  const time = ($("f").time || {}).value;
+  const phone = $("phone").value.trim();
+  if (!$("date").value) return setStatus("Выберите дату.", "err");
+  if (!time) return setStatus("Выберите время.", "err");
+  if (!$("name").value.trim()) return setStatus("Введите имя.", "err");
+  if (phone.replace(/\D/g, "").length < 10) return setStatus("Введите телефон полностью, с кодом.", "err");
+
+  $("btn").disabled = true; setStatus("Записываем…");
+  try {
+    const r = await fetch(`${API}/api/book`, {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({date: $("date").value, time, name: $("name").value, phone, tg_username: $("tg").value, comment: $("comment").value})
+    });
+    const d = await r.json();
+    if (r.ok) {
+      const [y, m, dd] = d.date.split("-");
+      $("f").style.display = "none";
+      $("doneText").textContent = `${$("name").value.trim()}, ждём вас ${dd}.${m}.${y} в ${d.time}. Вас примет мастер ${d.master}. Если планы изменятся, позвоните нам.`;
+      $("done").style.display = "block";
+      if (d.tg_link) { $("tgLink").href = d.tg_link; $("tgLink").hidden = false; $("tgHint").hidden = false; }
+      window.scrollTo({top: 0, behavior: "smooth"});
+      return;
+    }
+    setStatus(d.error || "Не удалось записаться.", "err");
+    if (d.free) showSlots(d.free); // время заняли — показываем актуальное
+    else $("btn").disabled = false;
+  } catch {
+    setStatus("Нет связи с сервером. Попробуйте ещё раз.", "err");
+    $("btn").disabled = false;
+  }
+});
+
+/* ===== Вопросы и поддержка ===== */
+const qd = $("qdlg");
+let qtoken = localStorage.getItem("qtk") || "", qtimer = null;
+fetch(`${API}/api/config`).then(r => r.json()).then(c => {
+  if (c.tg) { $("qtg").href = c.tg; $("qtg").hidden = false; }
+  if (c.whatsapp) { $("qwa").href = c.whatsapp; $("qwa").hidden = false; }
+}).catch(() => {});
+
+function qView(v) { $("qpick").hidden = v !== "pick"; $("qform").hidden = v !== "form"; $("qchat").hidden = v !== "chat"; }
+function qStop() { clearInterval(qtimer); qtimer = null; }
+async function qLoad() {
+  try {
+    const r = await fetch(`${API}/api/ticket/${qtoken}`);
+    if (!r.ok) throw 0;
+    const d = await r.json();
+    const box = $("qmsgs"), atEnd = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+    box.replaceChildren(...d.messages.map(m => {
+      const b = document.createElement("div"), s = document.createElement("small");
+      b.className = "bubble " + m.sender;
+      s.textContent = (m.sender === "staff" ? "Поддержка" : "Вы") + " · " + m.created_at.slice(11);
+      b.append(s, m.text); return b;
+    }));
+    if (atEnd) box.scrollTop = box.scrollHeight;
+  } catch { localStorage.removeItem("qtk"); qtoken = ""; qStop(); qView("pick"); }
+}
+function qOpenChat() { qView("chat"); qLoad(); qStop(); qtimer = setInterval(qLoad, 10000); }
+
+$("qbtn").addEventListener("click", () => { qd.showModal(); qtoken ? qOpenChat() : qView("pick"); });
+$("qclose").addEventListener("click", () => qd.close());
+qd.addEventListener("close", qStop);
+$("qsite").addEventListener("click", () => qtoken ? qOpenChat() : qView("form"));
+$("qnew").addEventListener("click", () => { localStorage.removeItem("qtk"); qtoken = ""; qStop(); qView("form"); });
+
+$("qform").addEventListener("submit", async e => {
+  e.preventDefault(); $("qerr").textContent = "";
+  try {
+    const r = await fetch(`${API}/api/ticket`, {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({name: $("qname").value, contact: $("qcontact").value, text: $("qtext").value})});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error);
+    qtoken = d.token; localStorage.setItem("qtk", qtoken); $("qtext").value = ""; qOpenChat();
+  } catch (err) { $("qerr").textContent = err.message || "Не удалось отправить. Попробуйте ещё раз."; }
+});
+$("qreply").addEventListener("submit", async e => {
+  e.preventDefault();
+  const text = $("qrtext").value.trim(); if (!text) return;
+  await fetch(`${API}/api/ticket/${qtoken}`, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({text})}).catch(() => {});
+  $("qrtext").value = ""; qLoad();
+});
+</script>
+</body>
+</html>
