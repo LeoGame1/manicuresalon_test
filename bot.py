@@ -445,6 +445,11 @@ def tick():
 
 
 def poll():
+    me = api("getMe")
+    if not me:
+        print("БОТ НЕ ЗАПУЩЕН: Telegram не принял BOT_TOKEN (проверьте токен в переменных)", flush=True)
+        return
+    print(f"Бот @{me.get('username')} запущен, жду сообщения", flush=True)
     api("deleteWebhook")
     api("setMyCommands", commands=[{"command": "start", "description": "Главное меню"}, {"command": "id", "description": "Узнать свой Telegram ID"}])
     offset = None
@@ -453,7 +458,12 @@ def poll():
             p = {"timeout": 30, "allowed_updates": json.dumps(["message", "callback_query", "chat_member"])}
             if offset is not None:
                 p["offset"] = offset
-            for u in api_raw("getUpdates", **p).get("result", []):
+            r = api_raw("getUpdates", **p)
+            if not r.get("ok"):  # например, «Conflict»: тот же бот запущен ещё где-то
+                print("getUpdates:", r.get("description", "нет ответа от Telegram"), flush=True)
+                time.sleep(5)
+                continue
+            for u in r.get("result", []):
                 offset = u["update_id"] + 1
                 try:
                     handle_update(u)
@@ -474,6 +484,7 @@ def scheduler():
 
 def start_bot():
     if not BOT_TOKEN:
+        print("БОТ НЕ ЗАПУЩЕН: переменная BOT_TOKEN не задана", flush=True)
         return
     threading.Thread(target=poll, daemon=True).start()
     threading.Thread(target=scheduler, daemon=True).start()
