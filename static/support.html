@@ -4,14 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
-<title>Вопросы клиентов</title>
+<title>Служба поддержки</title>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/base.css">
+<style>#v-q{display:grid;gap:20px}</style>
 </head>
 <body>
 <main>
   <div class="top">
-    <h1>💬 Вопросы клиентов</h1>
+    <h1 id="title">💬 Служба поддержки</h1>
     <div class="nav hidden" id="nav"><a class="btn ghost hidden" id="adm" href="/admin">👑 Админ-панель</a><button class="ghost" id="out">Выйти</button></div>
   </div>
 
@@ -27,25 +28,42 @@
   </section>
 
   <div id="app" style="display:none;gap:20px">
-    <section id="listbox">
-      <div class="tabs" id="tabs">
-        <button class="on" data-s="open">🔴 Открытые</button>
-        <button class="ghost" data-s="closed">✅ Закрытые</button>
-        <button class="ghost" id="refresh">🔄 Обновить</button>
+    <section id="mtabs" class="hidden">
+      <div class="tabs" id="vtabs">
+        <button class="on" data-v="q">💬 Вопросы</button>
+        <button class="ghost" data-v="stats">📊 Моя работа</button>
+        <button class="ghost" data-v="off">🏖 Мои выходные</button>
+        <button class="ghost" data-v="team">👥 Коллектив</button>
+        <button class="ghost" data-v="chat">🔗 Чат салона</button>
       </div>
-      <div id="list"></div>
     </section>
 
-    <section id="chat" class="hidden">
-      <div class="top"><h2 id="ctitle" style="margin:0"></h2><button class="ghost" id="back">← К списку</button></div>
-      <p class="hint" id="cmeta"></p>
-      <div id="msgs"></div>
-      <form id="rf" style="display:grid;gap:10px;margin-top:14px">
-        <textarea id="rtext" maxlength="1000" placeholder="Ваш ответ клиенту…" aria-label="Ответ"></textarea>
-        <div class="acts" style="justify-content:flex-start"><button type="submit">📨 Отправить</button><button type="button" class="ghost" id="close">✅ Закрыть вопрос</button><button type="button" class="ghost" id="back2">📋 К списку вопросов</button></div>
-      </form>
-      <p class="err" id="rerr"></p>
-    </section>
+    <div id="v-q">
+      <section id="listbox">
+        <div class="tabs" id="tabs">
+          <button class="on" data-s="open">🔴 Открытые</button>
+          <button class="ghost" data-s="closed">✅ Закрытые</button>
+          <button class="ghost" id="refresh">🔄 Обновить</button>
+        </div>
+        <div id="list"></div>
+      </section>
+
+      <section id="chat" class="hidden">
+        <div class="top"><h2 id="ctitle" style="margin:0"></h2><button class="ghost" id="back">← К списку</button></div>
+        <p class="hint" id="cmeta"></p>
+        <div id="msgs"></div>
+        <form id="rf" style="display:grid;gap:10px;margin-top:14px">
+          <textarea id="rtext" maxlength="1000" placeholder="Ваш ответ клиенту…" aria-label="Ответ"></textarea>
+          <div class="acts" style="justify-content:flex-start"><button type="submit">📨 Отправить</button><button type="button" class="ghost" id="close">✅ Закрыть вопрос</button><button type="button" class="ghost" id="back2">📋 К списку вопросов</button></div>
+        </form>
+        <p class="err" id="rerr"></p>
+      </section>
+    </div>
+
+    <section id="v-stats" class="hidden"></section>
+    <section id="v-off" class="hidden"></section>
+    <section id="v-team" class="hidden"></section>
+    <section id="v-chat" class="hidden"></section>
   </div>
 </main>
 
@@ -54,6 +72,7 @@
 const api = Api(["adm", "sup"], () => { $("app").style.display = "none"; $("nav").classList.add("hidden"); $("login").style.display = "block"; });
 let status = "open", current = null, timer = null;
 
+/* ---------- вопросы клиентов ---------- */
 async function showList() {
   current = null; clearInterval(timer);
   $("chat").classList.add("hidden"); $("listbox").classList.remove("hidden");
@@ -91,13 +110,44 @@ $("rf").addEventListener("submit", async e => {
   try { await api(`/api/support/tickets/${current}/reply`, "POST", {text: $("rtext").value}); $("rtext").value = ""; openTicket(current, true); }
   catch (err) { $("rerr").textContent = err.message; }
 });
+
+/* ---------- личный кабинет сотрудника ---------- */
+function view(v) {
+  [...$("vtabs").children].forEach(b => { b.classList.toggle("on", b.dataset.v === v); b.classList.toggle("ghost", b.dataset.v !== v); });
+  ["q", "stats", "off", "team", "chat"].forEach(k => $("v-" + k).classList.toggle("hidden", k !== v));
+  if (v === "q") showList(); else { clearInterval(timer); current = null; }
+}
+$("vtabs").addEventListener("click", e => { if (e.target.dataset.v) view(e.target.dataset.v); });
+
+async function loadMe() {
+  try {
+    const d = await api("/api/support/me");
+    $("title").textContent = "🛟 " + d.name;
+    const T = ["вопрос", "вопроса", "вопросов"], R = ["ответ", "ответа", "ответов"];
+    $("v-stats").innerHTML = "<h2>📊 Моя работа</h2>" + [["week", "Эта неделя"], ["prev", "Прошлая неделя"], ["month", "Этот месяц"]]
+      .map(([k, t]) => { const s = d.stats[k]; return `<div class="item"><div>🗓 ${t}</div><div><b>${s.tickets} ${plural(s.tickets, T)}</b> <small style="display:inline">(${s.replies} ${plural(s.replies, R)})</small></div></div>`; }).join("") +
+      '<p class="hint">У службы поддержки нет графика приёмов, поэтому вместо часов считаются вопросы, на которые вы ответили. Если на вопрос ответили двое, он засчитывается обоим.</p>';
+    $("v-off").innerHTML = "<h2>🏖 Мои выходные</h2>" + (d.off_today ? '<p class="ok">Сегодня у вас выходной: уведомления о новых вопросах не приходят.</p>' : "") +
+      (d.days_off.length ? d.days_off.map(x => `<div class="item"><div>📅 ${fmtDate(x)}</div></div>`).join("") : '<p class="empty">Ближайших выходных нет.</p>') +
+      '<p class="hint">Выходные назначает владелец салона.</p>';
+    $("v-team").innerHTML = "<h2>👥 Коллектив салона</h2><h3 style='margin:0 0 4px'>💅 Мастера</h3>" +
+      (d.team.masters.map(n => `<div class="item"><div>💅 ${esc(n)}</div></div>`).join("") || '<p class="empty">Пока никого нет.</p>') +
+      "<h3 style='margin:18px 0 4px'>🛟 Служба поддержки</h3>" +
+      (d.team.support.map(n => `<div class="item"><div>🛟 ${esc(n)}</div></div>`).join("") || '<p class="empty">Пока никого нет.</p>');
+    $("v-chat").innerHTML = "<h2>🔗 Общий чат салона</h2>" + (d.chat_link
+      ? `<p>Здесь собирается вся команда 👇</p><a class="btn" href="${esc(d.chat_link)}" target="_blank" rel="noopener">🚪 Перейти в чат</a>`
+      : '<p class="empty">🔒 Ссылка на чат временно недоступна. Владелец скоро обновит её.</p>');
+    $("mtabs").classList.remove("hidden");
+  } catch { $("mtabs").classList.add("hidden"); } // владелец: личного кабинета нет, только вопросы
+}
+
 $("lf").addEventListener("submit", async e => {
   e.preventDefault(); $("lerr").textContent = "";
-  try { localStorage.setItem("sup", (await api("/api/staff/login", "POST", {role: "support", name: $("name").value, password: $("pw").value})).token); $("pw").value = ""; await showList(); }
+  try { localStorage.setItem("sup", (await api("/api/staff/login", "POST", {role: "support", name: $("name").value, password: $("pw").value})).token); $("pw").value = ""; await showList(); loadMe(); }
   catch (err) { $("lerr").textContent = err.message; }
 });
 $("out").addEventListener("click", () => { localStorage.removeItem("sup"); localStorage.removeItem("adm"); location.reload(); });
-if (localStorage.getItem("adm") || localStorage.getItem("sup")) showList().catch(() => {});
+if (localStorage.getItem("adm") || localStorage.getItem("sup")) showList().then(loadMe).catch(() => {});
 </script>
 </body>
 </html>
