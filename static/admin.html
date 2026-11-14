@@ -73,11 +73,12 @@
     </section>
 
     <section>
-      <h2>🏖 Выходные мастеров</h2>
+      <h2>🏖 Выходные сотрудников</h2>
       <div id="daysoff"></div>
-      <form id="df" class="add">
+      <form id="df" class="add" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
         <select id="dmaster" aria-label="Мастер"></select>
-        <input type="date" id="ddate" aria-label="Дата выходного">
+        <input type="date" id="ddate" aria-label="Первый день выходного" title="Первый день">
+        <input type="date" id="ddate2" aria-label="Последний день, необязательно" title="Последний день (необязательно)">
         <button type="submit">Добавить</button>
       </form>
       <p class="err" id="derr"></p>
@@ -122,8 +123,9 @@ async function load() {
   $("chint").textContent = (ch.link ? "Мастера видят ссылку в кабинете и в боте." : "Ссылка не задана: мастера видят «временно недоступна».") +
     (ch.group_connected ? " Группа для проверки участников подключена." : " Группа не подключена: добавьте бота администратором и отправьте в ней /setgroup.");
 
-  $("dmaster").innerHTML = m.masters.map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join("");
-  $("daysoff").innerHTML = o.days_off.length ? o.days_off.map(x => `<div class="item"><div>${esc(x.master)}<small>выходной ${fmtDate(x.date)}</small></div><button class="ghost" data-d="${x.id}">Убрать</button></div>`).join("") : '<p class="empty">Выходных пока нет.</p>';
+  $("dmaster").innerHTML = (m.masters.length ? `<optgroup label="Мастера">${m.masters.map(x => `<option value="master:${x.id}">${esc(x.name)}</option>`).join("")}</optgroup>` : "") +
+    (s.staff.length ? `<optgroup label="Поддержка">${s.staff.map(x => `<option value="support:${x.id}">${esc(x.name)}</option>`).join("")}</optgroup>` : "");
+  $("daysoff").innerHTML = o.days_off.length ? o.days_off.map(x => `<div class="item"><div>${x.kind === "support" ? "🛟" : "💅"} ${esc(x.person)}<small>выходной ${fmtDate(x.date)}</small></div><button class="ghost" data-d="${x.kind}:${x.id}">Убрать</button></div>`).join("") : '<p class="empty">Выходных пока нет.</p>';
 
   BOOKINGS = {}; let html = "", last = "";
   $("etime").innerHTML = b.slots.map(t => `<option>${t}</option>`).join("");
@@ -167,8 +169,8 @@ $("cclear").addEventListener("click", async () => { if (confirm("Убрать с
 $("df").addEventListener("submit", async e => {
   e.preventDefault(); $("derr").textContent = "";
   try {
-    const d = await api("/api/admin/days-off", "POST", {master_id: $("dmaster").value, date: $("ddate").value});
-    $("ddate").value = ""; await load();
+    const d = await api("/api/admin/days-off", "POST", {kind: $("dmaster").value.split(":")[0], person_id: $("dmaster").value.split(":")[1], date: $("ddate").value, date_to: $("ddate2").value});
+    $("ddate").value = ""; $("ddate2").value = ""; await load();
     if (d.conflicts) alert(`У мастера на эту дату уже записей: ${d.conflicts}. Они остались в списке: перенесите их (✏️ Изменить) или отмените.`);
   } catch (err) { $("derr").textContent = err.message; }
 });
@@ -199,7 +201,7 @@ document.addEventListener("click", async e => {
       if (r.future_bookings) alert(`У мастера осталось будущих записей: ${r.future_bookings}. Передайте их другому мастеру (✏️ Изменить).`);
     }
     if (t.s && confirm("Удалить сотрудника поддержки?")) { await api("/api/admin/support-staff/" + t.s, "DELETE"); await load(); }
-    if (t.d) { await api("/api/admin/days-off/" + t.d, "DELETE"); await load(); }
+    if (t.d) { await api("/api/admin/days-off/" + t.d.replace(":", "/"), "DELETE"); await load(); }
     if (t.e) openEdit(t.e);
     if (t.b && confirm("Отменить запись? " + (t.n === "1" ? "Клиент получит сообщение в Telegram." : "Клиент не подключал Telegram: сообщите ему об отмене по телефону.") + " Мастер тоже получит уведомление.")) { await api("/api/admin/bookings/" + t.b, "DELETE"); await load(); }
   } catch (err) { alert(err.message); }
