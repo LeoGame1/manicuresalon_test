@@ -43,6 +43,9 @@ CREATE INDEX IF NOT EXISTS idx_bookings_token ON bookings(token);
 CREATE TABLE IF NOT EXISTS days_off (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   master_id INTEGER NOT NULL REFERENCES masters(id), date TEXT NOT NULL, UNIQUE (master_id, date));
+CREATE TABLE IF NOT EXISTS support_days_off (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  support_id INTEGER NOT NULL REFERENCES support_staff(id), date TEXT NOT NULL, UNIQUE (support_id, date));
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE IF NOT EXISTS support_staff (
   id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, telegram_id TEXT,
@@ -466,10 +469,70 @@ def support_tail(rng):
     return f"\n\n{t}" if t else ""
 
 
+def team():
+    """Коллектив: (мастера, сотрудники поддержки), только действующие."""
+    with closing(db()) as c:
+        return ([r["name"] for r in c.execute("SELECT name FROM masters WHERE active=1 ORDER BY name")],
+                [r["name"] for r in c.execute("SELECT name FROM support_staff WHERE active=1 ORDER BY name")])
+
+
+# ---------- выходные (мастера и поддержка) ----------
+DO = {"master": ("days_off", "master_id", "masters"), "support": ("support_days_off", "support_id", "support_staff")}
+
+
+def days_off_rows(kind=None, pid=None):
+    """Будущие выходные: одного человека, одной роли или все вместе."""
+    out, today = [], now_local().date().isoformat()
+    with closing(db()) as c:
+        for k in ([kind] if kind else ["master", "support"]):
+            tbl, col, ptbl = DO[k]
+            q = f"SELECT d.id, d.date, p.name AS person FROM {tbl} d JOIN {ptbl} p ON p.id=d.{col} WHERE p.active=1 AND d.date>=?"
+            args = [today]
+            if pid:
+                q, args = q + f" AND d.{col}=?", args + [pid]
+            out += [{"id": r["id"], "kind": k, "date": r["date"], "person": r["person"]} for r in c.execute(q, args)]
+    return sorted(out, key=lambda r: (r["date"], r["person"]))
+
+
+def add_days_off(kind, pid, start, end=None):
+    """Выходной на день или период. Возвращает (ok, сообщение, число записей мастера на эти дни)."""
+    tbl, col, ptbl = DO[kind]
+    s, e = parse_date(start), parse_date(end) if end else parse_date(start)
+    if not s or not e:
+        return False, "Выберите дату выходного.", 0
+    if e < s:
+        s, e = e, s
+    if s < now_local().date():
+        return False, "Выходной нельзя поставить на прошедшую дату.", 0
+    if (e - s).days > 60:
+        return False, "Максимум 60 дней за один раз.", 0
+    days = [(s + timedelta(n)).isoformat() for n in range((e - s).days + 1)]
+    with closing(db()) as c:
+        p = c.execute(f"SELECT name, telegram_id FROM {ptbl} WHERE id=? AND active=1", (pid,)).fetchone()
+        if not p:
+            return False, "Сотрудник не найден.", 0
+        for d in days:
+            c.execute(f"INSERT OR IGNORE INTO {tbl} ({col}, date) VALUES (?,?)", (pid, d))
+        n = c.execute("SELECT COUNT(*) FROM bookings WHERE master_id=? AND date BETWEEN ? AND ?", (pid, days[0], days[-1])).fetchone()[0] if kind == "master" else 0
+    if p["telegram_id"]:
+        span = fmt_date(days[0]) if len(days) == 1 else f"с {fmt_date(days[0])} по {fmt_date(days[-1])}"
+        tg(p["telegram_id"], f"🏖 <b>Вам назначен выходной</b>\n\n📅 {span}")
+    return True, "ok", n
+
+
+def day_off_remove(kind, did):
+    with closing(db()) as c:
+        c.execute(f"DELETE FROM {DO[kind][0]} WHERE id=?", (did,))
+
+
 # ---------- вопросы клиентов ----------
 def staff_chats():
+    """Кому слать новые вопросы: владелец и сотрудники поддержки, у которых сегодня не выходной."""
+    today = now_local().date().isoformat()
     with closing(db()) as c:
-        ids = [r["telegram_id"] for r in c.execute("SELECT telegram_id FROM support_staff WHERE active=1 AND telegram_id IS NOT NULL")]
+        ids = [r["telegram_id"] for r in c.execute(
+            """SELECT telegram_id FROM support_staff WHERE active=1 AND telegram_id IS NOT NULL
+               AND id NOT IN (SELECT support_id FROM support_days_off WHERE date=?)""", (today,))]
     return {OWNER, *map(str, ids)} - {""}
 
 
