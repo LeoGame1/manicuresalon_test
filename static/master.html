@@ -28,6 +28,7 @@
       <div class="tabs" id="tabs">
         <button class="on" data-t="bk">📅 Мои записи</button>
         <button class="ghost" data-t="hrs">⏱ Мои часы</button>
+        <button class="ghost" data-t="off">🏖 Мои выходные</button>
         <button class="ghost" data-t="team">👥 Коллектив</button>
         <button class="ghost" data-t="chat">💬 Чат салона</button>
       </div>
@@ -35,6 +36,7 @@
     <section id="p-bk"></section>
     <section id="p-hrs" class="hidden"></section>
     <section id="p-team" class="hidden"></section>
+    <section id="p-off" class="hidden"></section>
     <section id="p-chat" class="hidden"></section>
   </div>
 </main>
@@ -59,7 +61,14 @@ async function load() {
     .map(([k, t]) => `<div class="item"><div>🗓 ${t}</div><div><b>${d.hours[k]} ч</b></div></div>`).join("") +
     '<p class="hint">Считаются приёмы по 2 часа, прошедшие и сегодняшние.</p>';
 
-  $("p-team").innerHTML = "<h2>👥 Коллектив салона</h2>" + d.team.map(n => `<div class="item"><div>💅 ${esc(n)}</div></div>`).join("");
+  $("p-team").innerHTML = "<h2>👥 Коллектив салона</h2><h3 style='margin:0 0 4px'>💅 Мастера</h3>" +
+    (d.team.masters.map(n => `<div class="item"><div>💅 ${esc(n)}</div></div>`).join("") || '<p class="empty">Пока никого нет.</p>') +
+    "<h3 style='margin:18px 0 4px'>🛟 Служба поддержки</h3>" +
+    (d.team.support.map(n => `<div class="item"><div>🛟 ${esc(n)}</div></div>`).join("") || '<p class="empty">Пока никого нет.</p>');
+
+  $("p-off").innerHTML = "<h2>🏖 Мои выходные</h2>" + (d.off_today ? '<p class="ok">Сегодня у вас выходной.</p>' : "") +
+    (d.days_off.length ? d.days_off.map(x => `<div class="item"><div>📅 ${fmtDate(x)}</div></div>`).join("") : '<p class="empty">Ближайших выходных нет.</p>') +
+    '<p class="hint">Выходные назначает владелец салона. В эти дни клиенты не записываются к вам.</p>';
 
   $("p-chat").innerHTML = "<h2>💬 Общий чат салона</h2>" + (d.chat_link
     ? `<p>Здесь собирается вся команда 👇</p><a class="btn" href="${esc(d.chat_link)}" target="_blank" rel="noopener">🚪 Перейти в чат</a>`
@@ -69,7 +78,7 @@ async function load() {
 $("tabs").addEventListener("click", e => {
   const t = e.target.dataset.t; if (!t) return;
   [...$("tabs").children].forEach(b => { b.classList.toggle("on", b === e.target); b.classList.toggle("ghost", b !== e.target); });
-  ["bk", "hrs", "team", "chat"].forEach(k => $("p-" + k).classList.toggle("hidden", k !== t));
+  ["bk", "hrs", "off", "team", "chat"].forEach(k => $("p-" + k).classList.toggle("hidden", k !== t));
 });
 
 $("lf").addEventListener("submit", async e => {
