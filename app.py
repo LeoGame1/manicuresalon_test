@@ -173,9 +173,9 @@ def master_data():
             return err("Нужен вход.", 401)
         rows = c.execute("SELECT date, time, name, phone, tg_username, comment FROM bookings WHERE master_id=? AND date>=? ORDER BY date, time",
                          (mid, now_local().date().isoformat())).fetchall()
-        team = [r["name"] for r in c.execute("SELECT name FROM masters WHERE active=1 ORDER BY name")]
-    return jsonify(name=me["name"], bookings=[dict(r) for r in rows], team=team, chat_link=get_setting("chat_link") or None,
-                   hours={p: hours_for(mid, *period_range(p))[0] for p in ("week", "prev", "month")})
+    return jsonify(name=me["name"], bookings=[dict(r) for r in rows], team=dict(zip(("masters", "support"), team())), chat_link=get_setting("chat_link") or None,
+                   hours={p: hours_for(mid, *period_range(p))[0] for p in ("week", "prev", "month")},
+                   days_off=(days := [r["date"] for r in days_off_rows("master", mid)]), off_today=now_local().date().isoformat() in days)
 
 
 # ---------- поддержка (сотрудник или владелец) ----------
@@ -222,6 +222,24 @@ def support_reply(tid):
 def support_close(tid):
     ticket_close(tid)
     return jsonify(ok=True)
+
+
+@app.get("/api/support/me")
+@need("support")
+def support_me():
+    """Личный кабинет сотрудника: статистика, выходные, ссылка на общий чат."""
+    sid = g.user["id"]
+    if not sid:
+        return err("Это кабинет сотрудника поддержки.", 403)
+    with closing(db()) as c:
+        me = c.execute("SELECT name FROM support_staff WHERE id=? AND active=1", (sid,)).fetchone()
+    if not me:
+        return err("Нужен вход.", 401)
+    days = [r["date"] for r in days_off_rows("support", sid)]
+    stats = {p: dict(zip(("tickets", "replies"), support_counts(sid, *period_range(p)))) for p in ("week", "prev", "month")}
+    return jsonify(name=me["name"], stats=stats, chat_link=get_setting("chat_link") or None,
+                   days_off=days, off_today=now_local().date().isoformat() in days,
+                   team=dict(zip(("masters", "support"), team())))
 
 
 # ---------- админ (владелец) ----------
@@ -319,36 +337,30 @@ def stats():
 @app.get("/api/admin/days-off")
 @need()
 def days_off_list():
-    with closing(db()) as c:
-        rows = c.execute("""SELECT d.id, d.date, m.name AS master FROM days_off d JOIN masters m ON m.id=d.master_id
-                            WHERE m.active=1 AND d.date >= ? ORDER BY d.date, m.name""", (now_local().date().isoformat(),))
-        return jsonify(days_off=[dict(r) for r in rows])
+    return jsonify(days_off=days_off_rows())
 
 
 @app.post("/api/admin/days-off")
 @need()
 def days_off_add():
     d = body()
-    day = parse_date(d.get("date"))
-    if day is None or day < now_local().date():
-        return err("Выберите дату выходного.")
+    kind = d.get("kind") or "master"
     try:
-        mid = int(d.get("master_id"))
+        pid = int(d.get("person_id") or d.get("master_id"))
     except (TypeError, ValueError):
-        return err("Выберите мастера.")
-    with closing(db()) as c:
-        if not c.execute("SELECT id FROM masters WHERE id=? AND active=1", (mid,)).fetchone():
-            return err("Выберите мастера.")
-        c.execute("INSERT OR IGNORE INTO days_off (master_id, date) VALUES (?,?)", (mid, day.isoformat()))
-        n = c.execute("SELECT COUNT(*) FROM bookings WHERE master_id=? AND date=?", (mid, day.isoformat())).fetchone()[0]
-    return jsonify(ok=True, conflicts=n)
+        return err("Выберите сотрудника.")
+    if kind not in DO:
+        return err("Выберите сотрудника.")
+    ok, msg, n = add_days_off(kind, pid, d.get("date"), d.get("date_to") or None)
+    return jsonify(ok=True, conflicts=n) if ok else err(msg)  # записи мастера на эти дни не удаляются автоматически
 
 
-@app.delete("/api/admin/days-off/<int:did>")
+@app.delete("/api/admin/days-off/<kind>/<int:did>")
 @need()
-def days_off_remove(did):
-    with closing(db()) as c:
-        c.execute("DELETE FROM days_off WHERE id=?", (did,))
+def days_off_remove(kind, did):
+    if kind not in DO:
+        return err("Не найдено.", 404)
+    day_off_remove(kind, did)
     return jsonify(ok=True)
 
 
