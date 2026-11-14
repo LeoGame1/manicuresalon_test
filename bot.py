@@ -38,7 +38,8 @@ def menu(uid, mid=None):
                  [B("👥 Коллектив", "team"), B("💬 Чат салона", "chm")]]
     if rl["support"] and not rl["owner"]:
         title = f"🛟 <b>{esc(rl['support']['name'])}, служба поддержки</b>"
-        rows += [[B("💬 Вопросы клиентов", "tks"), B("✅ Закрытые", "tkx")], [B("📊 Моя статистика", "mys"), B("💬 Чат салона", "chm")]]
+        rows += [[B("💬 Вопросы клиентов", "tks"), B("✅ Закрытые", "tkx")], [B("📊 Моя статистика", "mys"), B("💬 Чат салона", "chm")],
+                  [B("🏖 Мои выходные", "myoff"), B("👥 Коллектив", "team")]]
     if not rows:
         title = ("💅 <b>Салон маникюра</b>\n\nЗдравствуйте! 👋\n"
                  "• Напоминания о записи придут сюда 🔔\n• Есть вопрос? Просто напишите сообщение — мы ответим ✍️")
@@ -65,10 +66,13 @@ def bookings_text(mid):
     return "\n".join(out)
 
 
-def team_text():
-    with closing(db()) as c:
-        names = [r["name"] for r in c.execute("SELECT name FROM masters WHERE active=1 ORDER BY name")]
-    return "👥 <b>Коллектив салона</b>\n\n" + ("\n".join(f"💅 {esc(n)}" for n in names) or "Пока никого нет.")
+def team_text(with_support=False):
+    masters, staff = team()
+    text = "👥 <b>Коллектив салона</b>\n\n" + ("💅 <b>Мастера</b>\n" if with_support else "")
+    text += "\n".join(f"💅 {esc(n)}" for n in masters) or "Пока никого нет."
+    if with_support:
+        text += "\n\n🛟 <b>Служба поддержки</b>\n" + ("\n".join(f"🛟 {esc(n)}" for n in staff) or "Пока никого нет.")
+    return text
 
 
 def chat_screen(uid, mid):
@@ -94,6 +98,46 @@ def my_support_stats(uid, mid, sid):
         lines.append(f"🗓 {title}: <b>{t} {plural(t, ('вопрос', 'вопроса', 'вопросов'))}</b> ({r} {plural(r, ('ответ', 'ответа', 'ответов'))})")
     lines.append("\n<i>Вопрос считается обработанным, если вы на него ответили.</i>")
     screen(uid, mid, "\n".join(lines), MAIN)
+
+
+KIND = {"m": "master", "s": "support"}
+
+
+def parse_days(text):
+    """«25.11» или «25.11-27.11» -> (с, по)."""
+    found = re.findall(r"(\d{1,2})\.(\d{1,2})(?:\.(\d{2,4}))?", text)
+    if not 1 <= len(found) <= 2:
+        return None
+    today, out = now_local().date(), []
+    for d, mo, y in found:
+        try:
+            yy = (int(y) + (2000 if int(y) < 100 else 0)) if y else today.year
+            day = date(yy, int(mo), int(d))
+            if not y and day < today:
+                day = date(yy + 1, int(mo), int(d))
+        except ValueError:
+            return None
+        out.append(day.isoformat())
+    return out[0], (out[1] if len(out) == 2 else None)
+
+
+def days_off_screen(uid, mid, kind, pid):
+    with closing(db()) as c:
+        p = c.execute(f"SELECT name FROM {DO[kind][2]} WHERE id=? AND active=1", (pid,)).fetchone()
+    if not p:
+        return screen(uid, mid, "🤷 Не найден.", MAIN)
+    k, back = ("m", f"ms:{pid}") if kind == "master" else ("s", f"sp:{pid}")
+    rows = days_off_rows(kind, pid)
+    text = f"🏖 <b>Выходные: {esc(p['name'])}</b>\n\n" + ("\n".join(f"📅 {fmt_date(r['date'])}" for r in rows) if rows else "Ближайших выходных нет.")
+    btns = [B(f"✖ {r['date'][8:]}.{r['date'][5:7]}", f"dod:{k}:{r['id']}:{pid}") for r in rows[:30]]
+    screen(uid, mid, text + ("\n\n<i>Нажмите на дату, чтобы убрать выходной.</i>" if rows else ""),
+           [btns[i:i + 3] for i in range(0, len(btns), 3)] + [[B("➕ Добавить выходной", f"doa:{k}:{pid}")], [B("⬅️ Назад", back)]])
+
+
+def my_off(uid, mid, sid):
+    rows = days_off_rows("support", sid)
+    text = "🏖 <b>Мои выходные</b>\n\n" + ("\n".join(f"📅 {fmt_date(r['date'])}" for r in rows) if rows else "Ближайших выходных нет.")
+    screen(uid, mid, text + "\n\n<i>Выходные назначает владелец. В выходной вам не приходят уведомления о новых вопросах.</i>", MAIN)
 
 
 # ---------- записи (владелец) ----------
@@ -156,7 +200,7 @@ def person_card(uid, mid, table, cmd, pid, icon, pw_cmd, del_cmd, back):
         return screen(uid, mid, "🤷 Не найден.", [[B("⬅️ Назад", back)]])
     tgid = f"<code>{r['telegram_id']}</code>" if r["telegram_id"] else "не указан"
     screen(uid, mid, f"{icon} <b>{esc(r['name'])}</b>\n🆔 Telegram ID: {tgid}",
-           [[B("🔑 Новый пароль для сайта", f"{pw_cmd}:{pid}")], [B("🗑 Удалить", f"{del_cmd}:{pid}")], [B("⬅️ Назад", back)]])
+           [[B("🏖 Выходные", f"do:{'m' if table == 'masters' else 's'}:{pid}")], [B("🔑 Новый пароль для сайта", f"{pw_cmd}:{pid}")], [B("🗑 Удалить", f"{del_cmd}:{pid}")], [B("⬅️ Назад", back)]])
 
 
 def add_person_done(uid, kind, name, tgid):
@@ -292,6 +336,18 @@ def on_state(uid, text):
             STATE[uid] = (st, data)
             return send(uid, "⚠️ ID — это число, например <code>123456789</code>. Или «-», чтобы пропустить.")
         return add_person_done(uid, "m" if st == "am_tg" else "s", data, tgid)
+    if st == "doff":
+        kind, pid = data
+        rng = parse_days(text)
+        if not rng:
+            STATE[uid] = (st, data)
+            return send(uid, "🤔 Не понял. Напишите дату так: <code>25.11</code> или период <code>25.11-27.11</code>\n(/cancel — отмена)")
+        ok, msg, n = add_days_off(kind, pid, *rng)
+        if not ok:
+            STATE[uid] = (st, data)
+            return send(uid, f"⚠️ {esc(msg)}")
+        warn = f"\n\n⚠️ У мастера на эти даты уже записей: <b>{n}</b>. Передайте их другому мастеру в разделе «📅 Записи»." if n else ""
+        return send(uid, "✅ Выходные добавлены. 🏖" + warn, [[B("🏖 К выходным", f"do:{'m' if kind == 'master' else 's'}:{pid}")]])
     if st == "set_link":
         if not re.match(r"https?://\S+$", text):
             STATE[uid] = (st, data)
@@ -306,7 +362,7 @@ def on_state(uid, text):
 
 
 # ---------- кнопки ----------
-OWNER_ONLY = {"bk", "bd", "bdy", "bt", "bm", "bms", "ms", "msa", "msd", "msdy", "msp", "sp", "spa", "spd", "spdy", "spp", "hr", "ch", "cha", "chd"}
+OWNER_ONLY = {"bk", "bd", "bdy", "bt", "bm", "bms", "ms", "msa", "msd", "msdy", "msp", "sp", "spa", "spd", "spdy", "spp", "hr", "ch", "cha", "chd", "do", "doa", "dod"}
 SUPPORT = {"tks", "tkx", "tk", "tkr", "tkc"}
 
 
@@ -317,8 +373,8 @@ def on_callback(cb):
     rl = roles_of(uid)
     staff = rl["owner"] or rl["support"]
     if (cmd in OWNER_ONLY and not rl["owner"]) or (cmd in SUPPORT and not staff) or (cmd in ("my", "myh") and not rl["master"]) \
-            or (cmd == "team" and not (rl["master"] or rl["owner"])) \
-            or (cmd == "chm" and not (rl["master"] or rl["owner"] or rl["support"])) or (cmd == "mys" and not rl["support"]):
+            or (cmd == "team" and not (rl["master"] or rl["owner"] or rl["support"])) \
+            or (cmd == "chm" and not (rl["master"] or rl["owner"] or rl["support"])) or (cmd in ("mys", "myoff") and not rl["support"]):
         return send(uid, "🔒 Нет доступа.")
     STATE.pop(uid, None)
     i = int(a[0]) if a and a[0].isdigit() else None
@@ -329,7 +385,7 @@ def on_callback(cb):
     # мастер
     elif cmd == "my": screen(uid, mid, bookings_text(rl["master"]["id"]), MAIN)
     elif cmd == "myh": my_hours(uid, mid, rl["master"]["id"])
-    elif cmd == "team": screen(uid, mid, team_text(), MAIN)
+    elif cmd == "team": screen(uid, mid, team_text(True), MAIN)
     elif cmd == "chm": chat_screen(uid, mid)
     # записи
     elif cmd == "bk": booking_card(uid, mid, i) if i else bookings_list(uid, mid)
@@ -370,6 +426,14 @@ def on_callback(cb):
     elif cmd == "tks": ticket_list(uid, mid)
     elif cmd == "tkx": ticket_list(uid, mid, "closed")
     elif cmd == "mys": my_support_stats(uid, mid, rl["support"]["id"])
+    elif cmd == "myoff": my_off(uid, mid, rl["support"]["id"])
+    elif cmd == "do" and a[0] in KIND: days_off_screen(uid, mid, KIND[a[0]], int(a[1]))
+    elif cmd == "doa" and a[0] in KIND:
+        STATE[uid] = ("doff", (KIND[a[0]], int(a[1])))
+        send(uid, "🏖 <b>Выходной</b>\n\nНапишите дату: <code>25.11</code>\nили период: <code>25.11-27.11</code>", [[B("↩️ Отмена", f"do:{a[0]}:{a[1]}")]])
+    elif cmd == "dod" and a[0] in KIND:
+        day_off_remove(KIND[a[0]], int(a[1]))
+        days_off_screen(uid, mid, KIND[a[0]], int(a[2]))
     elif cmd == "tk": ticket_view(uid, mid, i)
     elif cmd == "tkr": STATE[uid] = ("reply", i); send(uid, f"✍️ Напишите ответ на вопрос <b>#{i}</b> одним сообщением.", [[B("↩️ Отмена", f"tk:{i}"), B("📋 Все вопросы", "tks")]])
     elif cmd == "tkc": ticket_close(i); screen(uid, mid, f"✅ Вопрос #{i} закрыт.", [[B("📋 Все вопросы", "tks")]])
